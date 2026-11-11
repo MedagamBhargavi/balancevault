@@ -26,6 +26,7 @@ function Register() {
   const handleSubmit = (e) => {
     e.preventDefault();
 
+    
     if (formData.password.length < 8) {
       alert("Password must contain at least 8 characters.");
       return;

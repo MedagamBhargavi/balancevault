@@ -1,22 +1,58 @@
 
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import './Login.css';
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { authAPI } from "../services/api";
+import "./Login.css";
 
 function Login() {
-  const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!email || !password) {
-      alert('Please enter your email and password.');
+    setError("");
+
+    if (!email.trim() || !password) {
+      setError("Please enter your email and password.");
       return;
     }
 
-    alert('Login form submitted. Backend authentication is not connected yet.');
+    try {
+      setLoading(true);
+
+      const response = await authAPI.login({
+        email: email.trim(),
+        password
+      });
+
+      // Save authentication token
+      localStorage.setItem(
+        "balancevault_token",
+        response.token
+      );
+
+      // Save user information
+      localStorage.setItem(
+        "balancevault_user",
+        JSON.stringify(response.user)
+      );
+
+      // Navigate to dashboard
+      navigate(
+  response.user.role === "ADMIN" ? "/admin" : "/dashboard"
+);
+
+    } catch (err) {
+      setError(err.message || "Login failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -31,7 +67,9 @@ function Login() {
         </Link>
 
         <div className="login-left-content">
-          <span className="login-tag">SECURE BANKING EXPERIENCE</span>
+          <span className="login-tag">
+            SECURE BANKING EXPERIENCE
+          </span>
 
           <h1>
             Your finances.
@@ -74,12 +112,14 @@ function Login() {
         <div className="login-card">
 
           <Link to="/" className="mobile-brand">
-            <span className="brand-symbol">B</span>
-            BalanceVault
+           <span className="brand-symbol">B</span>
+<span>alanceVault</span>
           </Link>
 
           <div className="login-heading">
-            <span className="welcome-tag">WELCOME BACK</span>
+            <span className="welcome-tag">
+              WELCOME BACK
+            </span>
 
             <h2>Sign in to your account</h2>
 
@@ -90,9 +130,18 @@ function Login() {
 
           <form onSubmit={handleSubmit}>
 
+            {/* Error Message */}
+            {error && (
+              <div className="login-error" role="alert">
+                {error}
+              </div>
+            )}
+
             {/* Email */}
             <div className="form-group">
-              <label htmlFor="email">Email Address</label>
+              <label htmlFor="email">
+                Email Address
+              </label>
 
               <div className="input-wrapper">
                 <span className="input-icon">✉</span>
@@ -103,6 +152,7 @@ function Login() {
                   placeholder="Enter your email address"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
                   required
                 />
               </div>
@@ -110,17 +160,20 @@ function Login() {
 
             {/* Password */}
             <div className="form-group">
-              <label htmlFor="password">Password</label>
+              <label htmlFor="password">
+                Password
+              </label>
 
               <div className="input-wrapper">
                 <span className="input-icon">🔒</span>
 
                 <input
                   id="password"
-                  type={showPassword ? 'text' : 'password'}
+                  type={showPassword ? "text" : "password"}
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
                   required
                 />
 
@@ -129,13 +182,19 @@ function Login() {
                   className="password-toggle"
                   onClick={() => setShowPassword(!showPassword)}
                 >
-                  {showPassword ? 'Hide' : 'Show'}
+                  {showPassword ? "Hide" : "Show"}
                 </button>
               </div>
             </div>
 
-            <button type="submit" className="login-submit">
-              Sign In <span>→</span>
+            {/* Submit */}
+            <button
+              type="submit"
+              className="login-submit"
+              disabled={loading}
+            >
+              {loading ? "Signing In..." : "Sign In"}
+              {!loading && <span>→</span>}
             </button>
 
           </form>

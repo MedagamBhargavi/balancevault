@@ -1,0 +1,114 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// User access roles
+enum Role {
+  USER
+  ADMIN
+}
+
+// Account status
+enum AccountStatus {
+  ACTIVE
+  BLOCKED
+  CLOSED
+}
+
+// Transaction types
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  TRANSFER
+}
+
+// Transaction status
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+// User table
+model User {
+  id           String @id @default(uuid()) @db.Uuid
+  fullName     String
+  email        String @unique
+  passwordHash String
+  role         Role   @default(USER)
+
+  accounts     Account[]
+  transactions Transaction[]
+  auditLogs    AuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Account table
+model Account {
+  id            String        @id @default(uuid()) @db.Uuid
+  accountNumber String        @unique
+  balance       Decimal       @default(0) @db.Decimal(18, 2)
+  currency      String        @default("INR")
+  status        AccountStatus @default(ACTIVE)
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  outgoingTransactions Transaction[] @relation("FromAccount")
+  incomingTransactions Transaction[] @relation("ToAccount")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// Transaction table
+model Transaction {
+  id          String            @id @default(uuid()) @db.Uuid
+  reference   String            @unique @default(uuid())
+  type        TransactionType
+  amount      Decimal           @db.Decimal(18, 2)
+  status      TransactionStatus @default(PENDING)
+  description String?
+
+  fromAccountId String? @db.Uuid
+  toAccountId   String? @db.Uuid
+
+  fromAccount Account? @relation("FromAccount", fields: [fromAccountId], references: [id], onDelete: Restrict)
+  toAccount   Account? @relation("ToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([fromAccountId])
+  @@index([toAccountId])
+  @@index([createdAt])
+}
+
+// Audit log table
+model AuditLog {
+  id       String  @id @default(uuid()) @db.Uuid
+  action   String
+  entity   String
+  entityId String?
+  details  Json?
+
+  userId String? @db.Uuid
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+}
