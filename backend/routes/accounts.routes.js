@@ -1,15 +1,14 @@
 
 import { Router } from "express";
 import { randomInt } from "node:crypto";
+
 import prisma from "../prisma-client.js";
 import authMiddleware from "../middleware/auth.middleware.js";
 
 const router = Router();
 
-// Protect all account routes
 router.use(authMiddleware);
 
-// Generate account number
 function generateAccountNumber() {
   return "BV" + randomInt(1000000000, 10000000000);
 }
@@ -21,11 +20,9 @@ function generateAccountNumber() {
 
 router.post("/", async (req, res) => {
   try {
-    const accountNumber = generateAccountNumber();
-
     const account = await prisma.account.create({
       data: {
-        accountNumber,
+        accountNumber: generateAccountNumber(),
         userId: req.user.userId,
         balance: 0,
         currency: "INR"
@@ -34,12 +31,18 @@ router.post("/", async (req, res) => {
 
     return res.status(201).json({
       status: "success",
-      message: "Account created successfully!",
+      message: "Bank account created successfully!",
       account
     });
-
   } catch (error) {
-    console.error("Create account error:", error.message);
+    console.error("Create account error:", error);
+
+    if (error.code === "P2002") {
+      return res.status(409).json({
+        status: "error",
+        message: "Account number conflict. Please try again."
+      });
+    }
 
     return res.status(500).json({
       status: "error",
@@ -69,9 +72,8 @@ router.get("/", async (req, res) => {
       count: accounts.length,
       accounts
     });
-
   } catch (error) {
-    console.error("Get accounts error:", error.message);
+    console.error("Get accounts error:", error);
 
     return res.status(500).json({
       status: "error",
@@ -105,9 +107,8 @@ router.get("/:id", async (req, res) => {
       status: "success",
       account
     });
-
   } catch (error) {
-    console.error("Get account error:", error.message);
+    console.error("Get account error:", error);
 
     return res.status(500).json({
       status: "error",

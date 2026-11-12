@@ -1,9 +1,11 @@
-
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { authAPI } from "../services/api";
 import "./Register.css";
 
 function Register() {
+  const navigate = useNavigate();
+
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -15,39 +17,77 @@ function Register() {
   });
 
   const [agreeTerms, setAgreeTerms] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value,
-    });
+    const { name, value } = e.target;
+
+    setFormData((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+
+    setError("");
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    
+    setError("");
+    setSuccess("");
+
+    const fullName = formData.fullName.trim();
+    const email = formData.email.trim().toLowerCase();
+
+    if (!fullName) {
+      setError("Please enter your full name.");
+      return;
+    }
+
     if (formData.password.length < 8) {
-      alert("Password must contain at least 8 characters.");
+      setError("Password must contain at least 8 characters.");
       return;
     }
 
     if (formData.password !== formData.confirmPassword) {
-      alert("Passwords do not match!");
+      setError("Passwords do not match.");
       return;
     }
 
     if (!agreeTerms) {
-      alert("Please accept the Terms and Conditions.");
+      setError("Please accept the Terms and Conditions.");
       return;
     }
 
-    alert("Registration form submitted! Backend integration is not connected yet.");
+    try {
+      setIsSubmitting(true);
+
+      const response = await authAPI.register({
+        fullName,
+        email,
+        password: formData.password,
+      });
+
+      setSuccess(response.message || "Registration successful! Redirecting to login...");
+
+      setTimeout(() => {
+        navigate("/login", {
+          state: {
+            message: "Account created successfully. Please sign in.",
+          },
+        });
+      }, 1200);
+    } catch (err) {
+      setError(err.message || "Registration failed. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="register-page">
-
       {/* Left Side */}
       <div className="register-left">
         <div className="register-brand">
@@ -56,7 +96,9 @@ function Register() {
         </div>
 
         <div className="register-left-content">
-          <span className="register-tag">YOUR FINANCIAL JOURNEY STARTS HERE</span>
+          <span className="register-tag">
+            YOUR FINANCIAL JOURNEY STARTS HERE
+          </span>
 
           <h1>
             Take Control.
@@ -115,11 +157,13 @@ function Register() {
           <div className="register-heading">
             <span className="form-label">GET STARTED</span>
             <h2>Create your account</h2>
-            <p>Join BalanceVault and take the first step towards better financial management.</p>
+            <p>
+              Join BalanceVault and take the first step towards
+              better financial management.
+            </p>
           </div>
 
           <form onSubmit={handleSubmit}>
-
             <div className="register-input-group">
               <label>Full Name</label>
               <input
@@ -128,6 +172,7 @@ function Register() {
                 placeholder="Enter your full name"
                 value={formData.fullName}
                 onChange={handleChange}
+                autoComplete="name"
                 required
               />
             </div>
@@ -140,6 +185,7 @@ function Register() {
                 placeholder="you@example.com"
                 value={formData.email}
                 onChange={handleChange}
+                autoComplete="email"
                 required
               />
             </div>
@@ -153,12 +199,14 @@ function Register() {
                   placeholder="Create a password"
                   value={formData.password}
                   onChange={handleChange}
+                  autoComplete="new-password"
+                  minLength={8}
                   required
                 />
                 <button
                   type="button"
                   className="password-toggle"
-                  onClick={() => setShowPassword(!showPassword)}
+                  onClick={() => setShowPassword((value) => !value)}
                 >
                   {showPassword ? "Hide" : "Show"}
                 </button>
@@ -175,13 +223,14 @@ function Register() {
                   placeholder="Re-enter your password"
                   value={formData.confirmPassword}
                   onChange={handleChange}
+                  autoComplete="new-password"
                   required
                 />
                 <button
                   type="button"
                   className="password-toggle"
                   onClick={() =>
-                    setShowConfirmPassword(!showConfirmPassword)
+                    setShowConfirmPassword((value) => !value)
                   }
                 >
                   {showConfirmPassword ? "Hide" : "Show"}
@@ -200,10 +249,26 @@ function Register() {
               </span>
             </label>
 
-            <button type="submit" className="register-submit">
-              Create Account <span>→</span>
-            </button>
+            {error && (
+              <div role="alert" style={{ color: "#dc2626", marginBottom: "12px" }}>
+                {error}
+              </div>
+            )}
 
+            {success && (
+              <div role="status" style={{ color: "#15803d", marginBottom: "12px" }}>
+                {success}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="register-submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Creating Account..." : "Create Account"}
+              {!isSubmitting && <span> →</span>}
+            </button>
           </form>
 
           <div className="register-login-link">

@@ -33,6 +33,13 @@ function isValidUUID(value) {
   );
 }
 
+function validateDescription(description) {
+  return (
+    description === undefined ||
+    (typeof description === "string" && description.length <= 200)
+  );
+}
+
 // ==========================================
 // DEPOSIT
 // POST /api/transactions/deposit
@@ -50,8 +57,7 @@ router.post("/deposit", async (req, res) => {
       });
     }
 
-    if (description !== undefined &&
-        (typeof description !== "string" || description.length > 200)) {
+    if (!validateDescription(description)) {
       return res.status(400).json({
         status: "error",
         message: "Description must be a string of at most 200 characters."
@@ -88,13 +94,12 @@ router.post("/deposit", async (req, res) => {
           type: "DEPOSIT",
           amount: amountText,
           status: "COMPLETED",
-          description: description || "Account deposit",
+          description: description?.trim() || "Account deposit",
           toAccountId: accountId,
           userId: req.user.userId
         }
       });
 
-      // AUDIT LOG
       await tx.auditLog.create({
         data: {
           action: "DEPOSIT",
@@ -161,8 +166,7 @@ router.post("/withdraw", async (req, res) => {
       });
     }
 
-    if (description !== undefined &&
-        (typeof description !== "string" || description.length > 200)) {
+    if (!validateDescription(description)) {
       return res.status(400).json({
         status: "error",
         message: "Description must be a string of at most 200 characters."
@@ -185,7 +189,6 @@ router.post("/withdraw", async (req, res) => {
         throw new Error("ACCOUNT_NOT_ACTIVE");
       }
 
-      // Prevent withdrawal when balance is insufficient.
       const debit = await tx.account.updateMany({
         where: {
           id: accountId,
@@ -202,7 +205,7 @@ router.post("/withdraw", async (req, res) => {
         }
       });
 
-      if (debit.count === 0) {
+      if (debit.count !== 1) {
         throw new Error("INSUFFICIENT_BALANCE");
       }
 
@@ -215,13 +218,12 @@ router.post("/withdraw", async (req, res) => {
           type: "WITHDRAWAL",
           amount: amountText,
           status: "COMPLETED",
-          description: description || "Account withdrawal",
+          description: description?.trim() || "Account withdrawal",
           fromAccountId: accountId,
           userId: req.user.userId
         }
       });
 
-      // AUDIT LOG
       await tx.auditLog.create({
         data: {
           action: "WITHDRAWAL",
@@ -281,33 +283,39 @@ router.post("/withdraw", async (req, res) => {
 // ==========================================
 // TRANSFER
 // POST /api/transactions/transfer
+// Supports transfer between different users.
+// Receiver is identified by account number.
 // ==========================================
 
 router.post("/transfer", async (req, res) => {
   try {
-    const { fromAccountId, toAccountId, description } = req.body;
+    const {
+      fromAccountId,
+      receiverAccountNumber,
+      description
+    } = req.body;
+
     const amountText = validateAmount(req.body.amount);
 
-    if (
-      !isValidUUID(fromAccountId) ||
-      !isValidUUID(toAccountId) ||
-      !amountText
-    ) {
+    const receiverNumber = String(
+      receiverAccountNumber ?? ""
+    ).trim().toUpperCase();
+
+    if (!isValidUUID(fromAccountId) || !amountText) {
       return res.status(400).json({
         status: "error",
-        message: "Valid sender account, receiver account and amount are required."
+        message: "Valid sender account and positive amount are required."
       });
     }
 
-    if (fromAccountId === toAccountId) {
+    if (!/^BV\d{10}$/.test(receiverNumber)) {
       return res.status(400).json({
         status: "error",
-        message: "Sender and receiver accounts must be different."
+        message: "Enter a valid receiver account number."
       });
     }
 
-    if (description !== undefined &&
-        (typeof description !== "string" || description.length > 200)) {
+    if (!validateDescription(description)) {
       return res.status(400).json({
         status: "error",
         message: "Description must be a string of at most 200 characters."
@@ -315,7 +323,7 @@ router.post("/transfer", async (req, res) => {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      // Sender must belong to logged-in user.
+      // Sender must belong to the logged-in user.
       const sender = await tx.account.findFirst({
         where: {
           id: fromAccountId,
@@ -327,15 +335,19 @@ router.post("/transfer", async (req, res) => {
         throw new Error("SENDER_NOT_FOUND");
       }
 
-      // Receiver can belong to another user.
+      // Receiver can belong to any user.
       const receiver = await tx.account.findUnique({
         where: {
-          id: toAccountId
+          accountNumber: receiverNumber
         }
       });
 
       if (!receiver) {
         throw new Error("RECEIVER_NOT_FOUND");
+      }
+
+      if (sender.id === receiver.id) {
+        throw new Error("SAME_ACCOUNT");
       }
 
       if (
@@ -345,10 +357,10 @@ router.post("/transfer", async (req, res) => {
         throw new Error("ACCOUNT_NOT_ACTIVE");
       }
 
-      // Debit sender only if sufficient balance exists.
+      // Debit sender only when sufficient balance exists.
       const debit = await tx.account.updateMany({
         where: {
-          id: fromAccountId,
+          id: sender.id,
           userId: req.user.userId,
           status: "ACTIVE",
           balance: {
@@ -362,14 +374,14 @@ router.post("/transfer", async (req, res) => {
         }
       });
 
-      if (debit.count === 0) {
+      if (debit.count !== 1) {
         throw new Error("INSUFFICIENT_BALANCE");
       }
 
       // Credit receiver.
       const credit = await tx.account.updateMany({
         where: {
-          id: toAccountId,
+          id: receiver.id,
           status: "ACTIVE"
         },
         data: {
@@ -379,31 +391,32 @@ router.post("/transfer", async (req, res) => {
         }
       });
 
-      if (credit.count === 0) {
+      if (credit.count !== 1) {
         throw new Error("RECEIVER_UPDATE_FAILED");
       }
 
       const updatedSender = await tx.account.findUnique({
-        where: { id: fromAccountId }
+        where: { id: sender.id }
       });
 
       const updatedReceiver = await tx.account.findUnique({
-        where: { id: toAccountId }
+        where: { id: receiver.id }
       });
 
+      // Create transfer transaction.
       const transaction = await tx.transaction.create({
         data: {
           type: "TRANSFER",
           amount: amountText,
           status: "COMPLETED",
-          description: description || "Money transfer",
-          fromAccountId,
-          toAccountId,
+          description: description?.trim() || "Money transfer",
+          fromAccountId: sender.id,
+          toAccountId: receiver.id,
           userId: req.user.userId
         }
       });
 
-      // AUDIT LOG
+      // Create audit log.
       await tx.auditLog.create({
         data: {
           action: "TRANSFER",
@@ -444,7 +457,14 @@ router.post("/transfer", async (req, res) => {
     if (error.message === "RECEIVER_NOT_FOUND") {
       return res.status(404).json({
         status: "error",
-        message: "Receiver account not found."
+        message: "Receiver account number not found."
+      });
+    }
+
+    if (error.message === "SAME_ACCOUNT") {
+      return res.status(400).json({
+        status: "error",
+        message: "You cannot transfer money to the same account."
       });
     }
 

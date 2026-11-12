@@ -19,7 +19,13 @@ async function apiRequest(endpoint, options = {}) {
     headers
   });
 
-  const data = await response.json();
+  let data;
+
+  try {
+    data = await response.json();
+  } catch {
+    data = {};
+  }
 
   if (!response.ok) {
     throw new Error(data.message || "Something went wrong.");
@@ -42,8 +48,7 @@ export const authAPI = {
       body: JSON.stringify(credentials)
     }),
 
-  getProfile: () =>
-    apiRequest("/auth/me")
+  getProfile: () => apiRequest("/auth/me")
 };
 
 // Account APIs
@@ -73,10 +78,16 @@ export const transactionAPI = {
       body: JSON.stringify(data)
     }),
 
+  // Transfer using receiver account number
   transfer: (data) =>
     apiRequest("/transactions/transfer", {
       method: "POST",
-      body: JSON.stringify(data)
+      body: JSON.stringify({
+        fromAccountId: data.fromAccountId,
+        receiverAccountNumber: data.receiverAccountNumber,
+        amount: data.amount,
+        description: data.description || ""
+      })
     }),
 
   getHistory: (page = 1, limit = 10) =>
@@ -89,6 +100,7 @@ export const auditAPI = {
     apiRequest(`/audit?page=${page}&limit=${limit}`)
 };
 
+// Admin APIs
 export const adminAPI = {
   getStats: () => apiRequest("/admin/stats"),
 
