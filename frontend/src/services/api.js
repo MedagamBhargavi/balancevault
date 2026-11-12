@@ -1,67 +1,70 @@
 
-const API_BASE_URL = "http://localhost:5000/api";
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-// Common API request function
-async function apiRequest(endpoint, options = {}) {
-  const token = localStorage.getItem("balancevault_token");
+// Common API request handler
+const apiRequest = async (endpoint, options = {}) => {
+  const token = localStorage.getItem("token");
 
-  const headers = {
-    "Content-Type": "application/json",
-    ...options.headers
+  const config = {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
   };
 
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers
-  });
-
-  let data;
-
   try {
-    data = await response.json();
-  } catch {
-    data = {};
-  }
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
 
-  if (!response.ok) {
-    throw new Error(data.message || "Something went wrong.");
-  }
+    const data = await response.json().catch(() => ({}));
 
-  return data;
-}
+    if (!response.ok) {
+      throw new Error(
+        data.message || data.error || `Request failed (${response.status})`
+      );
+    }
+
+    return data;
+  } catch (error) {
+    console.error("API Error:", error);
+    throw error;
+  }
+};
 
 // Authentication APIs
 export const authAPI = {
-  register: (userData) =>
+  register: (data) =>
     apiRequest("/auth/register", {
       method: "POST",
-      body: JSON.stringify(userData)
+      body: JSON.stringify(data),
     }),
 
-  login: (credentials) =>
+  login: (data) =>
     apiRequest("/auth/login", {
       method: "POST",
-      body: JSON.stringify(credentials)
+      body: JSON.stringify(data),
     }),
 
-  getProfile: () => apiRequest("/auth/me")
+  me: () => apiRequest("/auth/me"),
+
+  getProfile: () => apiRequest("/auth/me"),
 };
 
 // Account APIs
 export const accountAPI = {
+  getAll: () => apiRequest("/accounts"),
+
   getAccounts: () => apiRequest("/accounts"),
 
-  getAccount: (id) => apiRequest(`/accounts/${id}`),
+  getById: (id) => apiRequest(`/accounts/${id}`),
 
-  createAccount: () =>
+  create: (data = {}) =>
     apiRequest("/accounts", {
       method: "POST",
-      body: JSON.stringify({})
-    })
+      body: JSON.stringify(data),
+    }),
 };
 
 // Transaction APIs
@@ -69,16 +72,15 @@ export const transactionAPI = {
   deposit: (data) =>
     apiRequest("/transactions/deposit", {
       method: "POST",
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
     }),
 
   withdraw: (data) =>
     apiRequest("/transactions/withdraw", {
       method: "POST",
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
     }),
 
-  // Transfer using receiver account number
   transfer: (data) =>
     apiRequest("/transactions/transfer", {
       method: "POST",
@@ -86,33 +88,47 @@ export const transactionAPI = {
         fromAccountId: data.fromAccountId,
         receiverAccountNumber: data.receiverAccountNumber,
         amount: data.amount,
-        description: data.description || ""
-      })
+        description: data.description || "",
+      }),
     }),
 
-  getHistory: (page = 1, limit = 10) =>
-    apiRequest(`/transactions?page=${page}&limit=${limit}`)
+  getAll: () => apiRequest("/transactions"),
+
+  getHistory: () => apiRequest("/transactions"),
+
+  getById: (id) => apiRequest(`/transactions/${id}`),
 };
 
 // Audit APIs
 export const auditAPI = {
-  getLogs: (page = 1, limit = 10) =>
-    apiRequest(`/audit?page=${page}&limit=${limit}`)
+  getAll: () => apiRequest("/audit"),
+
+  getLogs: () => apiRequest("/audit"),
+
+  getById: (id) => apiRequest(`/audit/${id}`),
 };
 
 // Admin APIs
 export const adminAPI = {
   getStats: () => apiRequest("/admin/stats"),
 
-  getUsers: (page = 1, limit = 10) =>
-    apiRequest(`/admin/users?page=${page}&limit=${limit}`),
+  getUsers: () => apiRequest("/admin/users"),
 
-  getAccounts: (page = 1, limit = 10) =>
-    apiRequest(`/admin/accounts?page=${page}&limit=${limit}`),
+  getAccounts: () => apiRequest("/admin/accounts"),
 
-  getTransactions: (page = 1, limit = 10) =>
-    apiRequest(`/admin/transactions?page=${page}&limit=${limit}`),
+  getTransactions: () => apiRequest("/admin/transactions"),
 
-  getAuditLogs: (page = 1, limit = 10) =>
-    apiRequest(`/admin/audit?page=${page}&limit=${limit}`)
+  getAuditLogs: () => apiRequest("/admin/audit"),
 };
+
+// Default export for compatibility
+const api = {
+  request: apiRequest,
+  auth: authAPI,
+  accounts: accountAPI,
+  transactions: transactionAPI,
+  audit: auditAPI,
+  admin: adminAPI,
+};
+
+export default api;
