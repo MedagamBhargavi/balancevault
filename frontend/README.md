@@ -1,16 +1,82 @@
-# React + Vite
+# BalanceVault – Secure Banking Platform
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+BalanceVault is a secure banking web application developed using React, Node.js, Express.js and PostgreSQL.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- User registration and login
+- Secure authentication using JWT
+- Automatic bank account creation
+- Account balance overview
+- Deposit and withdrawal operations
+- Money transfers between users
+- Transaction history
+- Audit logs and activity tracking
+- Role-based access control
+- Admin dashboard
 
-## React Compiler
+## Technology Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+**Frontend**
+- React.js
+- Vite
+- JavaScript
+- CSS
+- React Router
+- Lucide React
 
-## Expanding the ESLint configuration
+**Backend**
+- Node.js
+- Express.js
+- Prisma ORM
+- PostgreSQL
+- JWT Authentication
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Project Structure
+
+```text
+balancevault/
+├── backend/
+│   ├── routes/
+│   ├── middleware/
+│   ├── prisma/
+│   └── server.js
+└── frontend/
+    ├── public/
+    ├── src/
+    ├── package.json
+    └── vite.config.js
+```
+
+## Run Frontend Locally
+
+```bash
+npm install
+npm run dev
+```
+
+## Run Backend Locally
+
+```bash
+npm install
+node server.js
+```
+
+## Production Build
+
+```bash
+npm run build
+```
+
+## Security
+
+- JWT-based authentication
+- Protected API routes
+- Role-based authorization
+- Input validation
+- Transactional money operations
+- Audit logging
+
+## Disclaimer
+
+BalanceVault is a hackathon demonstration project. It is not a real banking application and does not process actual financial transactions.
