@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -30,6 +30,10 @@ function AdminDashboard() {
   const [error, setError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const user = JSON.parse(
+    localStorage.getItem("balancevault_user") || "null"
+  );
+
   const menuItems = [
     { id: "overview", label: "Overview", icon: LayoutDashboard },
     { id: "users", label: "Users", icon: Users },
@@ -38,7 +42,13 @@ function AdminDashboard() {
     { id: "audit", label: "Audit Logs", icon: ShieldCheck }
   ];
 
-  const loadData = async () => {
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("balancevault_user");
+    navigate("/login", { replace: true });
+  };
+
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError("");
 
@@ -57,44 +67,55 @@ function AdminDashboard() {
         adminAPI.getAuditLogs()
       ]);
 
-      setStats(statsData.stats);
+      setStats(statsData.stats || {});
       setUsers(usersData.users || []);
       setAccounts(accountsData.accounts || []);
       setTransactions(transactionsData.transactions || []);
       setLogs(auditData.logs || []);
     } catch (err) {
-      setError(err.message || "Unable to load admin information.");
+      console.error("ADMIN DASHBOARD ERROR:", err);
+
+      setError(
+        err.message || "Unable to load admin information."
+      );
+
+      const message = String(err.message || "").toLowerCase();
 
       if (
-        err.message?.toLowerCase().includes("unauthorized") ||
-        err.message?.toLowerCase().includes("access denied")
+        message.includes("unauthorized") ||
+        message.includes("access denied") ||
+        message.includes("forbidden") ||
+        message.includes("invalid token")
       ) {
-        localStorage.removeItem("balancevault_token");
-        localStorage.removeItem("balancevault_user");
-        navigate("/login");
+        handleLogout();
       }
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    if (!localStorage.getItem("balancevault_token")) {
-      navigate("/login");
+    const token = localStorage.getItem("token");
+    const storedUser = JSON.parse(
+      localStorage.getItem("balancevault_user") || "null"
+    );
+
+    if (!token || !storedUser) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    if (storedUser.role !== "ADMIN") {
+      navigate("/dashboard", { replace: true });
       return;
     }
 
     loadData();
-  }, []);
-
-  const handleLogout = () => {
-    localStorage.removeItem("balancevault_token");
-    localStorage.removeItem("balancevault_user");
-    navigate("/login");
-  };
+  }, [navigate, loadData]);
 
   const formatDate = (date) => {
     if (!date) return "—";
+
     return new Date(date).toLocaleString("en-IN");
   };
 
@@ -106,13 +127,21 @@ function AdminDashboard() {
   };
 
   const renderTable = () => {
-    if (loading) return <p className="admin-message">Loading data...</p>;
+    if (loading) {
+      return (
+        <p className="admin-message">
+          Loading data...
+        </p>
+      );
+    }
 
     if (error) {
       return (
         <div className="admin-error">
-          {error}
-          <button onClick={loadData}>Try Again</button>
+          <p>{error}</p>
+          <button onClick={loadData}>
+            Try Again
+          </button>
         </div>
       );
     }
@@ -131,21 +160,25 @@ function AdminDashboard() {
                 <th>Joined</th>
               </tr>
             </thead>
+
             <tbody>
-              {users.map((user) => (
-                <tr key={user.id}>
-                  <td>{user.fullName}</td>
-                  <td>{user.email}</td>
+              {users.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.fullName}</td>
+                  <td>{item.email}</td>
                   <td>
-                    <span className="admin-status">{user.role}</span>
+                    <span className="admin-status">
+                      {item.role}
+                    </span>
                   </td>
-                  <td>{user._count?.accounts ?? 0}</td>
-                  <td>{user._count?.transactions ?? 0}</td>
-                  <td>{formatDate(user.createdAt)}</td>
+                  <td>{item._count?.accounts ?? 0}</td>
+                  <td>{item._count?.transactions ?? 0}</td>
+                  <td>{formatDate(item.createdAt)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+
           {users.length === 0 && <p>No users found.</p>}
         </div>
       );
@@ -165,12 +198,13 @@ function AdminDashboard() {
                 <th>Status</th>
               </tr>
             </thead>
+
             <tbody>
               {accounts.map((account) => (
                 <tr key={account.id}>
                   <td>{account.accountNumber}</td>
-                  <td>{account.user?.fullName}</td>
-                  <td>{account.user?.email}</td>
+                  <td>{account.user?.fullName || "—"}</td>
+                  <td>{account.user?.email || "—"}</td>
                   <td>{formatMoney(account.balance)}</td>
                   <td>{account.currency}</td>
                   <td>{account.status}</td>
@@ -178,6 +212,7 @@ function AdminDashboard() {
               ))}
             </tbody>
           </table>
+
           {accounts.length === 0 && <p>No accounts found.</p>}
         </div>
       );
@@ -197,11 +232,12 @@ function AdminDashboard() {
                 <th>Date</th>
               </tr>
             </thead>
+
             <tbody>
               {transactions.map((transaction) => (
                 <tr key={transaction.id}>
                   <td>{transaction.type}</td>
-                  <td>{transaction.user?.fullName}</td>
+                  <td>{transaction.user?.fullName || "—"}</td>
                   <td>{formatMoney(transaction.amount)}</td>
                   <td>{transaction.status}</td>
                   <td>{transaction.description || "—"}</td>
@@ -210,7 +246,10 @@ function AdminDashboard() {
               ))}
             </tbody>
           </table>
-          {transactions.length === 0 && <p>No transactions found.</p>}
+
+          {transactions.length === 0 && (
+            <p>No transactions found.</p>
+          )}
         </div>
       );
     }
@@ -228,18 +267,22 @@ function AdminDashboard() {
                 <th>Date</th>
               </tr>
             </thead>
+
             <tbody>
               {logs.map((log) => (
                 <tr key={log.id}>
                   <td>{log.action}</td>
                   <td>{log.entity}</td>
-                  <td>{log.user?.email || "System / Deleted User"}</td>
+                  <td>
+                    {log.user?.email || "System / Deleted User"}
+                  </td>
                   <td>{log.entityId || "—"}</td>
                   <td>{formatDate(log.createdAt)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+
           {logs.length === 0 && <p>No audit logs found.</p>}
         </div>
       );
@@ -273,19 +316,26 @@ function AdminDashboard() {
 
   return (
     <div className="admin-layout">
-      <aside className={`admin-sidebar ${sidebarOpen ? "open" : ""}`}>
+
+      <aside
+        className={`admin-sidebar ${sidebarOpen ? "open" : ""}`}
+      >
         <div className="admin-brand">
           <span className="admin-brand-icon">B</span>
           BalanceVault
+
           <button
             className="admin-close"
             onClick={() => setSidebarOpen(false)}
+            aria-label="Close menu"
           >
             <X size={20} />
           </button>
         </div>
 
-        <p className="admin-menu-title">ADMIN MENU</p>
+        <p className="admin-menu-title">
+          ADMIN MENU
+        </p>
 
         <nav>
           {menuItems.map((item) => {
@@ -309,7 +359,10 @@ function AdminDashboard() {
           })}
         </nav>
 
-        <button className="admin-logout" onClick={handleLogout}>
+        <button
+          className="admin-logout"
+          onClick={handleLogout}
+        >
           <LogOut size={19} />
           Logout
         </button>
@@ -323,10 +376,12 @@ function AdminDashboard() {
       )}
 
       <main className="admin-main">
+
         <header className="admin-topbar">
           <button
             className="admin-mobile-menu"
             onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
           >
             <Menu size={22} />
           </button>
@@ -347,21 +402,35 @@ function AdminDashboard() {
         </header>
 
         <section className="admin-content">
-          {error && <div className="admin-error">{error}</div>}
+
+          {error && (
+            <div className="admin-error">
+              {error}
+            </div>
+          )}
 
           {activeTab === "overview" && (
             <>
               <div className="admin-welcome">
                 <div>
                   <span>ADMIN CONTROL PANEL</span>
-                  <h1>Welcome, Administrator!</h1>
-                  <p>Monitor users, accounts and system activities.</p>
+
+                  <h1>
+                    Hello, {user?.fullName || "Administrator"}!
+                  </h1>
+
+                  <p>
+                    Monitor users, accounts and system activities.
+                  </p>
                 </div>
+
                 <ShieldCheck size={55} />
               </div>
 
               {loading ? (
-                <p className="admin-message">Loading statistics...</p>
+                <p className="admin-message">
+                  Loading statistics...
+                </p>
               ) : (
                 <>
                   <div className="admin-stat-grid">
@@ -369,10 +438,14 @@ function AdminDashboard() {
                       const Icon = card.icon;
 
                       return (
-                        <div className="admin-stat-card" key={card.label}>
+                        <div
+                          className="admin-stat-card"
+                          key={card.label}
+                        >
                           <div className="admin-stat-icon">
                             <Icon size={23} />
                           </div>
+
                           <p>{card.label}</p>
                           <h2>{card.value}</h2>
                         </div>
@@ -382,8 +455,14 @@ function AdminDashboard() {
 
                   <div className="admin-balance-card">
                     <p>Total Account Balance</p>
-                    <h2>{formatMoney(stats?.totalBalance)}</h2>
-                    <span>Combined balance across all customer accounts</span>
+
+                    <h2>
+                      {formatMoney(stats?.totalBalance)}
+                    </h2>
+
+                    <span>
+                      Combined balance across all customer accounts
+                    </span>
                   </div>
                 </>
               )}
@@ -394,14 +473,20 @@ function AdminDashboard() {
             <div className="admin-section-heading">
               <div>
                 <h2>
-                  {menuItems.find((item) => item.id === activeTab)?.label}
+                  {menuItems.find(
+                    (item) => item.id === activeTab
+                  )?.label}
                 </h2>
-                <p>BalanceVault system records and information</p>
+
+                <p>
+                  BalanceVault system records and information
+                </p>
               </div>
             </div>
 
             {activeTab !== "overview" && renderTable()}
           </section>
+
         </section>
       </main>
     </div>

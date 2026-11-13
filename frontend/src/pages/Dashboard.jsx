@@ -50,6 +50,12 @@ function Dashboard() {
     try {
       setError("");
 
+      const token = localStorage.getItem("token");
+
+      if (!token) {
+        throw new Error("Authentication token missing.");
+      }
+
       const [
         profileResponse,
         accountResponse,
@@ -72,10 +78,19 @@ function Dashboard() {
       if (firstAccount) {
         setAccountId((current) => current || firstAccount.id);
       }
+
     } catch (err) {
-      localStorage.removeItem("balancevault_token");
-      localStorage.removeItem("balancevault_user");
-      navigate("/login");
+      console.error("DASHBOARD LOADING ERROR:", err);
+
+      setError(err.message || "Unable to load dashboard.");
+
+      // Clear the correct authentication keys only on 401
+      if (err.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("balancevault_user");
+        navigate("/login", { replace: true });
+      }
+
     } finally {
       setLoading(false);
     }
@@ -83,8 +98,29 @@ function Dashboard() {
 
   // CHECK LOGIN AND LOAD DATA
   useEffect(() => {
-    if (!localStorage.getItem("balancevault_token")) {
-      navigate("/login");
+    const token = localStorage.getItem("token");
+    const savedUser = localStorage.getItem("balancevault_user");
+
+    if (!token || !savedUser) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
+    try {
+      const parsedUser = JSON.parse(savedUser);
+
+      if (parsedUser.role !== "USER") {
+        navigate(
+          parsedUser.role === "ADMIN" ? "/admin" : "/login",
+          { replace: true }
+        );
+        return;
+      }
+
+    } catch {
+      localStorage.removeItem("token");
+      localStorage.removeItem("balancevault_user");
+      navigate("/login", { replace: true });
       return;
     }
 
@@ -107,9 +143,9 @@ function Dashboard() {
 
   // LOGOUT
   const logout = () => {
-    localStorage.removeItem("balancevault_token");
+    localStorage.removeItem("token");
     localStorage.removeItem("balancevault_user");
-    navigate("/login");
+    navigate("/login", { replace: true });
   };
 
   // CLEAR MESSAGES
@@ -128,11 +164,7 @@ function Dashboard() {
       return;
     }
 
-    if (
-      !amount ||
-      !Number.isFinite(Number(amount)) ||
-      Number(amount) <= 0
-    ) {
+    if (!amount || !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
       setError("Please enter a valid amount.");
       return;
     }
@@ -151,26 +183,17 @@ function Dashboard() {
         description: description.trim()
       };
 
-      // DEPOSIT
       if (activeTab === "deposit") {
         await transactionAPI.deposit(data);
         setSuccess("Deposit completed successfully!");
-      }
-
-      // WITHDRAW
-      else if (activeTab === "withdraw") {
+      } else if (activeTab === "withdraw") {
         await transactionAPI.withdraw(data);
         setSuccess("Withdrawal completed successfully!");
-      }
-
-      // TRANSFER TO ANOTHER USER
-      else if (activeTab === "transfer") {
+      } else if (activeTab === "transfer") {
         const receiverNumber = toAccountNumber.trim().toUpperCase();
 
         if (!/^BV\d{10}$/.test(receiverNumber)) {
-          setError(
-            "Please enter a valid account number. Example: BV1651515475"
-          );
+          setError("Please enter a valid account number. Example: BV1651515475");
           return;
         }
 
@@ -178,9 +201,7 @@ function Dashboard() {
           (account) => account.id === accountId
         );
 
-        if (
-          senderAccount?.accountNumber?.toUpperCase() === receiverNumber
-        ) {
+        if (senderAccount?.accountNumber?.toUpperCase() === receiverNumber) {
           setError("You cannot transfer money to your own account.");
           return;
         }
@@ -202,13 +223,13 @@ function Dashboard() {
       await loadDashboard();
 
     } catch (err) {
+      console.error("TRANSACTION ERROR:", err);
       setError(err.message || "Transaction failed.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // SIDEBAR NAVIGATION
   const navigation = [
     { id: "overview", label: "Overview", icon: LayoutDashboard },
     { id: "deposit", label: "Deposit", icon: ArrowDownToLine },
@@ -224,7 +245,6 @@ function Dashboard() {
     setMobileMenu(false);
   };
 
-  // LOADING SCREEN
   if (loading) {
     return (
       <div className="dashboard-loading">
@@ -236,13 +256,7 @@ function Dashboard() {
 
   return (
     <div className="dashboard-layout">
-
-      {/* SIDEBAR */}
-      <aside
-        className={`dashboard-sidebar ${
-          mobileMenu ? "sidebar-open" : ""
-        }`}
-      >
+      <aside className={`dashboard-sidebar ${mobileMenu ? "sidebar-open" : ""}`}>
         <div className="dashboard-brand">
           <span className="dashboard-brand-icon">B</span>
           <span>alanceVault</span>
@@ -257,9 +271,7 @@ function Dashboard() {
             return (
               <button
                 key={item.id}
-                className={`nav-item ${
-                  activeTab === item.id ? "active" : ""
-                }`}
+                className={`nav-item ${activeTab === item.id ? "active" : ""}`}
                 onClick={() => selectTab(item.id)}
               >
                 <Icon size={19} />
@@ -285,7 +297,6 @@ function Dashboard() {
         </div>
       </aside>
 
-      {/* MOBILE OVERLAY */}
       {mobileMenu && (
         <div
           className="dashboard-overlay"
@@ -293,10 +304,7 @@ function Dashboard() {
         />
       )}
 
-      {/* MAIN CONTENT */}
       <main className="dashboard-main">
-
-        {/* HEADER */}
         <header className="dashboard-header">
           <div className="header-left">
             <button
@@ -310,12 +318,7 @@ function Dashboard() {
               <span className="header-small">
                 BALANCEVAULT / SECURE BANKING
               </span>
-
-              <h1>
-                {navigation.find(
-                  (item) => item.id === activeTab
-                )?.label}
-              </h1>
+              <h1>{navigation.find((item) => item.id === activeTab)?.label}</h1>
             </div>
           </div>
 
@@ -323,7 +326,6 @@ function Dashboard() {
             <div className="user-avatar">
               <User size={20} />
             </div>
-
             <div className="user-details">
               <strong>{user?.fullName || "User"}</strong>
               <span>{user?.email || ""}</span>
@@ -332,85 +334,61 @@ function Dashboard() {
         </header>
 
         <div className="dashboard-content">
-
-          {/* ERROR MESSAGE */}
           {error && (
             <div className="dashboard-alert error-alert" role="alert">
               {error}
             </div>
           )}
 
-          {/* SUCCESS MESSAGE */}
           {success && (
             <div className="dashboard-alert success-alert" role="status">
               {success}
             </div>
           )}
 
-          {/* OVERVIEW */}
           {activeTab === "overview" && (
             <>
               <div className="welcome-section">
                 <div>
                   <h2>Hello, {user?.fullName || "there"}!</h2>
-                  <p>
-                    Here's an overview of your accounts and activity.
-                  </p>
+                  <p>Here's an overview of your accounts and activity.</p>
                 </div>
 
-                <button
-                  className="refresh-button"
-                  onClick={loadDashboard}
-                >
+                <button className="refresh-button" onClick={loadDashboard}>
                   <RefreshCw size={16} />
                   Refresh
                 </button>
               </div>
 
               <div className="overview-cards">
-
-                {/* BALANCE CARD */}
                 <div className="balance-card">
                   <div className="balance-card-top">
                     <span>Total Account Balance</span>
                     <Wallet size={23} />
                   </div>
-
                   <h2>{formatCurrency(totalBalance)}</h2>
-
                   <p>Combined balance across your accounts</p>
-
                   <div className="balance-card-footer">
                     <span>BalanceVault Account</span>
                     <ShieldCheck size={18} />
                   </div>
                 </div>
 
-                {/* ACCOUNT COUNT */}
                 <div className="stat-card">
-                  <div className="stat-icon green">
-                    <Wallet size={21} />
-                  </div>
-
+                  <div className="stat-icon green"><Wallet size={21} /></div>
                   <span>Total Accounts</span>
                   <h2>{accounts.length}</h2>
                   <p>Your registered accounts</p>
                 </div>
 
-                {/* TRANSACTION COUNT */}
                 <div className="stat-card">
-                  <div className="stat-icon blue">
-                    <History size={21} />
-                  </div>
-
+                  <div className="stat-icon blue"><History size={21} /></div>
                   <span>Recent Transactions</span>
                   <h2>{transactions.length}</h2>
                   <p>Latest transaction records</p>
                 </div>
-
               </div>
 
-              {/* MY ACCOUNTS */}
               <section className="dashboard-section">
                 <div className="section-heading">
                   <div>
@@ -423,29 +401,16 @@ function Dashboard() {
                   {accounts.map((account) => (
                     <div className="account-card" key={account.id}>
                       <div className="account-card-top">
-                        <div className="account-icon">
-                          <Wallet size={21} />
-                        </div>
-
-                        <span
-                          className={`account-status ${
-                            account.status?.toLowerCase()
-                          }`}
-                        >
+                        <div className="account-icon"><Wallet size={21} /></div>
+                        <span className={`account-status ${account.status?.toLowerCase()}`}>
                           {account.status}
                         </span>
                       </div>
 
-                      <span className="account-label">
-                        ACCOUNT NUMBER
-                      </span>
-
+                      <span className="account-label">ACCOUNT NUMBER</span>
                       <h3>{account.accountNumber}</h3>
 
-                      <span className="account-label">
-                        AVAILABLE BALANCE
-                      </span>
-
+                      <span className="account-label">AVAILABLE BALANCE</span>
                       <h2>{formatCurrency(account.balance)}</h2>
 
                       <span className="account-currency">
@@ -454,24 +419,17 @@ function Dashboard() {
                     </div>
                   ))}
 
-                  {accounts.length === 0 && (
-                    <p>No accounts found.</p>
-                  )}
+                  {accounts.length === 0 && <p>No accounts found.</p>}
                 </div>
               </section>
 
-              {/* RECENT TRANSACTIONS */}
               <section className="dashboard-section">
                 <div className="section-heading">
                   <div>
                     <h2>Recent Transactions</h2>
                     <p>Your latest account activities.</p>
                   </div>
-
-                  <button
-                    className="text-button"
-                    onClick={() => selectTab("transactions")}
-                  >
+                  <button className="text-button" onClick={() => selectTab("transactions")}>
                     View All
                   </button>
                 </div>
@@ -484,23 +442,13 @@ function Dashboard() {
             </>
           )}
 
-          {/* DEPOSIT / WITHDRAW / TRANSFER */}
           {["deposit", "withdraw", "transfer"].includes(activeTab) && (
             <section className="operation-section">
-
               <div className="operation-intro">
                 <div className="operation-icon">
-                  {activeTab === "deposit" && (
-                    <ArrowDownToLine size={26} />
-                  )}
-
-                  {activeTab === "withdraw" && (
-                    <ArrowUpFromLine size={26} />
-                  )}
-
-                  {activeTab === "transfer" && (
-                    <ArrowLeftRight size={26} />
-                  )}
+                  {activeTab === "deposit" && <ArrowDownToLine size={26} />}
+                  {activeTab === "withdraw" && <ArrowUpFromLine size={26} />}
+                  {activeTab === "transfer" && <ArrowLeftRight size={26} />}
                 </div>
 
                 <h2>
@@ -510,27 +458,15 @@ function Dashboard() {
                 </h2>
 
                 <p>
-                  {activeTab === "deposit" &&
-                    "Add demo funds to your account."}
-
-                  {activeTab === "withdraw" &&
-                    "Withdraw demo funds from your account."}
-
-                  {activeTab === "transfer" &&
-                    "Transfer demo funds between different users."}
+                  {activeTab === "deposit" && "Add demo funds to your account."}
+                  {activeTab === "withdraw" && "Withdraw demo funds from your account."}
+                  {activeTab === "transfer" && "Transfer demo funds between different users."}
                 </p>
               </div>
 
-              <form
-                className="operation-form"
-                onSubmit={handleTransaction}
-              >
-
-                {/* SENDER ACCOUNT */}
+              <form className="operation-form" onSubmit={handleTransaction}>
                 <label htmlFor="accountId">
-                  {activeTab === "transfer"
-                    ? "From Account"
-                    : "Select Account"}
+                  {activeTab === "transfer" ? "From Account" : "Select Account"}
                 </label>
 
                 <select
@@ -540,52 +476,37 @@ function Dashboard() {
                   required
                 >
                   <option value="">Choose an account</option>
-
                   {accounts.map((account) => (
                     <option key={account.id} value={account.id}>
-                      {account.accountNumber} —{" "}
-                      {formatCurrency(account.balance)}
+                      {account.accountNumber} — {formatCurrency(account.balance)}
                     </option>
                   ))}
                 </select>
 
-                {/* RECEIVER ACCOUNT NUMBER INPUT */}
                 {activeTab === "transfer" && (
                   <>
-                    <label htmlFor="toAccountNumber">
-                      Receiver Account Number
-                    </label>
-
+                    <label htmlFor="toAccountNumber">Receiver Account Number</label>
                     <input
                       id="toAccountNumber"
-                      name="toAccountNumber"
                       type="text"
                       placeholder="Example: BV1651515475"
                       value={toAccountNumber}
                       onChange={(e) =>
                         setToAccountNumber(
-                          e.target.value
-                            .toUpperCase()
-                            .replace(/[^A-Z0-9]/g, "")
+                          e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "")
                         )
                       }
                       maxLength={12}
                       autoComplete="off"
                       required
                     />
-
                     <small className="transfer-help">
-                      Enter the account number of the person receiving
-                      the money. Format: BV followed by 10 digits.
+                      Enter the receiver's account number: BV followed by 10 digits.
                     </small>
                   </>
                 )}
 
-                {/* AMOUNT */}
-                <label htmlFor="amount">
-                  Amount (INR)
-                </label>
-
+                <label htmlFor="amount">Amount (INR)</label>
                 <input
                   id="amount"
                   type="number"
@@ -597,11 +518,7 @@ function Dashboard() {
                   required
                 />
 
-                {/* DESCRIPTION */}
-                <label htmlFor="description">
-                  Description (optional)
-                </label>
-
+                <label htmlFor="description">Description (optional)</label>
                 <input
                   id="description"
                   type="text"
@@ -611,7 +528,6 @@ function Dashboard() {
                   onChange={(e) => setDescription(e.target.value)}
                 />
 
-                {/* SUBMIT */}
                 <button
                   type="submit"
                   className="operation-submit"
@@ -625,29 +541,19 @@ function Dashboard() {
                     ? "Confirm Withdrawal"
                     : "Confirm Transfer"}
                 </button>
-
               </form>
             </section>
           )}
 
-          {/* TRANSACTION HISTORY */}
           {activeTab === "transactions" && (
             <section className="dashboard-section">
-
               <div className="section-heading">
                 <div>
                   <h2>Transaction History</h2>
-                  <p>
-                    Review your recent deposits, withdrawals and transfers.
-                  </p>
+                  <p>Review your recent deposits, withdrawals and transfers.</p>
                 </div>
-
-                <button
-                  className="refresh-button"
-                  onClick={loadDashboard}
-                >
-                  <RefreshCw size={16} />
-                  Refresh
+                <button className="refresh-button" onClick={loadDashboard}>
+                  <RefreshCw size={16} /> Refresh
                 </button>
               </div>
 
@@ -655,82 +561,53 @@ function Dashboard() {
                 transactions={transactions}
                 formatCurrency={formatCurrency}
               />
-
             </section>
           )}
 
-          {/* AUDIT LOGS */}
           {activeTab === "audit" && (
             <section className="dashboard-section">
-
               <div className="section-heading">
                 <div>
                   <h2>Audit Activity</h2>
                   <p>Review recorded activities on your account.</p>
                 </div>
-
-                <button
-                  className="refresh-button"
-                  onClick={loadDashboard}
-                >
-                  <RefreshCw size={16} />
-                  Refresh
+                <button className="refresh-button" onClick={loadDashboard}>
+                  <RefreshCw size={16} /> Refresh
                 </button>
               </div>
 
               <div className="audit-list">
                 {auditLogs.map((log) => (
                   <div className="audit-item" key={log.id}>
-                    <div className="audit-icon">
-                      <ShieldCheck size={20} />
-                    </div>
-
+                    <div className="audit-icon"><ShieldCheck size={20} /></div>
                     <div className="audit-info">
                       <strong>{log.action}</strong>
-
-                      <span>
-                        {log.entity} · {log.entityId || "N/A"}
-                      </span>
-
-                      <small>
-                        {new Date(log.createdAt).toLocaleString("en-IN")}
-                      </small>
+                      <span>{log.entity} · {log.entityId || "N/A"}</span>
+                      <small>{new Date(log.createdAt).toLocaleString("en-IN")}</small>
                     </div>
                   </div>
                 ))}
 
                 {auditLogs.length === 0 && (
-                  <p className="empty-state">
-                    No audit records found yet.
-                  </p>
+                  <p className="empty-state">No audit records found yet.</p>
                 )}
               </div>
-
             </section>
           )}
 
-          {/* FOOTER */}
           <footer className="dashboard-footer">
             <span>© 2026 BalanceVault</span>
-            <span>
-              Secure Account Management · Hackathon Demo
-            </span>
+            <span>Secure Account Management · Hackathon Demo</span>
           </footer>
-
         </div>
       </main>
     </div>
   );
 }
 
-// TRANSACTION TABLE
 function TransactionTable({ transactions, formatCurrency }) {
   if (!transactions.length) {
-    return (
-      <div className="empty-state">
-        No transactions available.
-      </div>
-    );
+    return <div className="empty-state">No transactions available.</div>;
   }
 
   return (
@@ -749,33 +626,17 @@ function TransactionTable({ transactions, formatCurrency }) {
         <tbody>
           {transactions.map((transaction) => (
             <tr key={transaction.id}>
-              <td>
-                <strong>{transaction.type}</strong>
-              </td>
-
-              <td>
-                {transaction.description || "Account activity"}
-              </td>
-
+              <td><strong>{transaction.type}</strong></td>
+              <td>{transaction.description || "Account activity"}</td>
               <td className="transaction-amount">
                 {formatCurrency(transaction.amount)}
               </td>
-
               <td>
-                <span
-                  className={`transaction-status ${
-                    transaction.status?.toLowerCase()
-                  }`}
-                >
+                <span className={`transaction-status ${transaction.status?.toLowerCase()}`}>
                   {transaction.status}
                 </span>
               </td>
-
-              <td>
-                {new Date(
-                  transaction.createdAt
-                ).toLocaleDateString("en-IN")}
-              </td>
+              <td>{new Date(transaction.createdAt).toLocaleDateString("en-IN")}</td>
             </tr>
           ))}
         </tbody>
