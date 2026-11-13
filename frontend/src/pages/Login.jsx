@@ -15,7 +15,6 @@ function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     setError("");
 
     if (!email.trim() || !password) {
@@ -28,14 +27,15 @@ function Login() {
 
       const response = await authAPI.login({
         email: email.trim(),
-        password
+        password,
       });
 
-      // Save authentication token
-      localStorage.setItem(
-        "balancevault_token",
-        response.token
-      );
+      if (!response.token) {
+        throw new Error("Authentication token was not received.");
+      }
+
+      // Use the SAME key as api.js
+      localStorage.setItem("token", response.token);
 
       // Save user information
       localStorage.setItem(
@@ -43,11 +43,12 @@ function Login() {
         JSON.stringify(response.user)
       );
 
-      // Navigate to dashboard
-      navigate(
-  response.user.role === "ADMIN" ? "/admin" : "/dashboard"
-);
-
+      // Navigate according to user role
+      if (response.user.role === "ADMIN") {
+        navigate("/admin", { replace: true });
+      } else {
+        navigate("/dashboard", { replace: true });
+      }
     } catch (err) {
       setError(err.message || "Login failed. Please try again.");
     } finally {
@@ -57,10 +58,7 @@ function Login() {
 
   return (
     <div className="login-page">
-
-      {/* Left Side */}
       <div className="login-left">
-
         <Link to="/" className="login-brand">
           <span className="brand-symbol">B</span>
           BalanceVault
@@ -87,12 +85,10 @@ function Login() {
               <span className="benefit-icon">✓</span>
               Secure account access
             </div>
-
             <div>
               <span className="benefit-icon">✓</span>
               Protected user information
             </div>
-
             <div>
               <span className="benefit-icon">✓</span>
               Transparent account activity
@@ -103,49 +99,35 @@ function Login() {
         <p className="login-left-footer">
           © 2026 BalanceVault. All rights reserved.
         </p>
-
       </div>
 
-      {/* Right Side */}
       <div className="login-right">
-
         <div className="login-card">
-
           <Link to="/" className="mobile-brand">
-           <span className="brand-symbol">B</span>
-<span>alanceVault</span>
+            <span className="brand-symbol">B</span>
+            <span>alanceVault</span>
           </Link>
 
           <div className="login-heading">
-            <span className="welcome-tag">
-              WELCOME BACK
-            </span>
-
+            <span className="welcome-tag">WELCOME BACK</span>
             <h2>Sign in to your account</h2>
-
             <p>
               Enter your details to access your BalanceVault account.
             </p>
           </div>
 
           <form onSubmit={handleSubmit}>
-
-            {/* Error Message */}
             {error && (
               <div className="login-error" role="alert">
                 {error}
               </div>
             )}
 
-            {/* Email */}
             <div className="form-group">
-              <label htmlFor="email">
-                Email Address
-              </label>
+              <label htmlFor="email">Email Address</label>
 
               <div className="input-wrapper">
                 <span className="input-icon">✉</span>
-
                 <input
                   id="email"
                   type="email"
@@ -158,15 +140,11 @@ function Login() {
               </div>
             </div>
 
-            {/* Password */}
             <div className="form-group">
-              <label htmlFor="password">
-                Password
-              </label>
+              <label htmlFor="password">Password</label>
 
               <div className="input-wrapper">
                 <span className="input-icon">🔒</span>
-
                 <input
                   id="password"
                   type={showPassword ? "text" : "password"}
@@ -187,7 +165,6 @@ function Login() {
               </div>
             </div>
 
-            {/* Submit */}
             <button
               type="submit"
               className="login-submit"
@@ -196,32 +173,23 @@ function Login() {
               {loading ? "Signing In..." : "Sign In"}
               {!loading && <span>→</span>}
             </button>
-
           </form>
 
           <div className="login-register">
             <p>New to BalanceVault?</p>
-
-            <Link to="/register">
-              Create an account
-            </Link>
+            <Link to="/register">Create an account</Link>
           </div>
 
           <div className="login-back">
-            <Link to="/">
-              ← Back to Home
-            </Link>
+            <Link to="/">← Back to Home</Link>
           </div>
 
           <div className="login-security">
             <span>🛡️</span>
             Your security is our priority.
           </div>
-
         </div>
-
       </div>
-
     </div>
   );
 }

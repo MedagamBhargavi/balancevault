@@ -40,21 +40,43 @@ const apiRequest = async (endpoint, options = {}) => {
 
 // Authentication APIs
 export const authAPI = {
-  register: (data) =>
-    apiRequest("/auth/register", {
+  register: async (data) => {
+    const response = await apiRequest("/auth/register", {
       method: "POST",
       body: JSON.stringify(data),
-    }),
+    });
 
-  login: (data) =>
-    apiRequest("/auth/login", {
+    // Save token if registration returns one
+    if (response.token) {
+      localStorage.setItem("token", response.token);
+    }
+
+    return response;
+  },
+
+  login: async (data) => {
+    const response = await apiRequest("/auth/login", {
       method: "POST",
       body: JSON.stringify(data),
-    }),
+    });
+
+    // Save JWT token after successful login
+    if (response.token) {
+      localStorage.setItem("token", response.token);
+    } else {
+      throw new Error("Login successful, but authentication token was not received.");
+    }
+
+    return response;
+  },
 
   me: () => apiRequest("/auth/me"),
 
   getProfile: () => apiRequest("/auth/me"),
+
+  logout: () => {
+    localStorage.removeItem("token");
+  },
 };
 
 // Account APIs
